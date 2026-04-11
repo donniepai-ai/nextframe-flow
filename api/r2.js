@@ -1,4 +1,21 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { createClerkClient } from "@clerk/backend";
+
+const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+const OWNER_USER_ID = process.env.OWNER_USER_ID;
+
+async function verifyOwner(req) {
+  if (!OWNER_USER_ID) return false; // no owner set = anyone can write (dev mode)
+  const authHeader = req.headers["authorization"];
+  if (!authHeader?.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  try {
+    const payload = await clerk.verifyToken(token);
+    return payload.sub === OWNER_USER_ID;
+  } catch {
+    return false;
+  }
+}
 
 const s3 = new S3Client({
   region: "auto",
@@ -91,7 +108,66 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, deleted: key });
     }
 
-    return res.status(400).json({ error: "Invalid action. Use: upload, get, list, delete" });
+    // POST /api/r2?action=save-project  — owner only, saves project JSON to shared/
+    if (req.method === "POST" && action === "save-project") {
+      const ok = await verifyOwner(req);
+      if (!ok) return res.status(403).json({ error: "Forbidden" });
+
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      const { projectId, project } = body;
+      if (!projectId || !project) return res.status(400).json({ error: "Missing projectId or project" });
+
+      await s3.send(new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: `shared/${projectId}.json`,
+        Body: JSON.stringify(project),
+        ContentType: "application/json",
+      }));
+
+      return res.status(200).json({ ok: true, key: `shared/${projectId}.json` });
+    }
+
+    // GET /api/r2?action=list-shared  — returns all shared project JSONs
+    if (req.method === "GET" && action === "list-shared") {
+      const listResult = await s3.send(new ListObjectsV2Command({
+        Bucket: BUCKET,
+        Prefix: "shared/",
+      }));
+
+      const projects = [];
+      for (const obj of (listResult.Contents || [])) {
+        if (!obj.Key.endsWith(".json")) continue;
+        try {
+          const getRes = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: obj.Key }));
+          const chunks = [];
+          for await (const chunk of getRes.Body) chunks.push(chunk);
+          const text = Buffer.concat(chunks).toString("utf8");
+          projects.push(JSON.parse(text));
+        } catch {}
+      }
+
+      return res.status(200).json({ projects });
+    }
+
+    // DELETE /api/r2?action=delete-shared&projectId=xxx  — owner only
+    if (req.method === "DELETE" && action === "delete-shared") {
+      const ok = await verifyOwner(req);
+      if (!ok) return res.status(403).json({ error: "Forbidden" });
+
+      const { projectId } = req.query;
+      if (!projectId) return res.status(400).json({ error: "Missing projectId" });
+
+      await s3.send(new DeleteObjectCommand({
+        Bucket: BUCKET,
+        Key: `shared/${projectId}.json`,
+      }));
+
+      return res.status(200).json({ ok: true, deleted: `shared/${projectId}.json` });
+    }
+
+    return res.status(400).json({ error: "Invalid action. Use: upload, get, list, delete, save-project, list-shared, delete-shared" });
 
   } catch (err) {
     console.error("R2 API error:", err);

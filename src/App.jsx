@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useUser, useAuth, SignIn, UserButton } from "@clerk/clerk-react";
 
 const R2_WORKER_URL = "https://nextframe-flow-r2.donniepai.workers.dev";
 
@@ -308,9 +309,55 @@ const uploadToR2 = async (projectId, file) => {
 };
 
 // ════════════════════════════════════════
+//         LOGIN SCREEN
+// ════════════════════════════════════════
+function LoginScreen() {
+  return (
+    <div style={{
+      minHeight: "100vh", background: "#f5f5f0", display: "flex",
+      alignItems: "center", justifyContent: "center", flexDirection: "column",
+      fontFamily: "'Noto Sans TC', sans-serif",
+    }}>
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&family=Instrument+Sans:wght@400;700&display=swap" rel="stylesheet"/>
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: 14,
+          background: "linear-gradient(135deg, #d9453a, #c8850a)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 24, color: "#fff", margin: "0 auto 16px",
+        }}>▶</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a18", fontFamily: "'Instrument Sans', sans-serif", letterSpacing: 1 }}>
+          NEXTFRAME FLOW
+        </div>
+        <div style={{ fontSize: 11, color: "#8a8a82", letterSpacing: 3, marginTop: 4 }}>
+          AI FILM PIPELINE
+        </div>
+        <div style={{ fontSize: 13, color: "#8a8a82", marginTop: 12 }}>
+          登入後即可查看分享的專案內容
+        </div>
+      </div>
+      <SignIn
+        appearance={{
+          elements: {
+            rootBox: { width: 380 },
+            card: { boxShadow: "0 8px 40px rgba(0,0,0,0.10)", borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)" },
+          },
+        }}
+      />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════
 //              MAIN APP
 // ════════════════════════════════════════
 export default function FilmPipelineManager() {
+  const { user, isLoaded: userLoaded } = useUser();
+  const { getToken } = useAuth();
+  const OWNER_ID = import.meta.env.VITE_OWNER_USER_ID;
+  const isOwner = !!user && (user.id === OWNER_ID || !OWNER_ID);
+  const readOnly = !!user && !!OWNER_ID && user.id !== OWNER_ID;
+
   const [projects, setProjects] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const projectsRef = useRef([]);
@@ -820,20 +867,36 @@ export default function FilmPipelineManager() {
     showToast("分鏡表已在新視窗開啟，可列印為 PDF");
   };
 
-  // ─── Load projects from storage ───
+  // ─── Load projects from storage (owner) or R2 shared (viewer) ───
   useEffect(() => {
-    (async () => {
-      const keys = await S.list("proj:");
-      const loaded = [];
-      for (const k of keys) {
-        const p = await S.get(k);
-        if (p) loaded.push(p);
-      }
-      loaded.sort((a, b) => b.updatedAt - a.updatedAt);
-      setProjects(loaded);
-      setLoading(false);
-    })();
-  }, []);
+    if (!userLoaded || !user) return;
+    if (isOwner) {
+      (async () => {
+        const keys = await S.list("proj:");
+        const loaded = [];
+        for (const k of keys) {
+          const p = await S.get(k);
+          if (p) loaded.push(p);
+        }
+        loaded.sort((a, b) => b.updatedAt - a.updatedAt);
+        setProjects(loaded);
+        setLoading(false);
+      })();
+    } else {
+      // Viewer: load shared projects from R2
+      (async () => {
+        try {
+          const res = await fetch("/api/r2?action=list-shared");
+          const data = await res.json();
+          const shared = (data.projects || []).sort((a, b) => b.updatedAt - a.updatedAt);
+          setProjects(shared);
+        } catch (e) {
+          console.error("Failed to load shared projects:", e);
+        }
+        setLoading(false);
+      })();
+    }
+  }, [userLoaded, user, isOwner]);
 
   // ─── Flush save on page unload ───
   useEffect(() => {
@@ -947,6 +1010,51 @@ export default function FilmPipelineManager() {
     setProjects(prev => prev.filter(x => x.id !== id));
     if (activeId === id) setActiveId(null);
     showToast("已刪除");
+  };
+
+  // ─── Share / Unshare project ───
+  const [sharingId, setSharingId] = useState(null);
+
+  const toggleShare = async (projectId) => {
+    const p = projectsRef.current.find(x => x.id === projectId);
+    if (!p) return;
+    setSharingId(projectId);
+    try {
+      const token = await getToken();
+      if (!p.shared) {
+        // Share: save to R2
+        const res = await fetch("/api/r2?action=save-project", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ projectId, project: { ...p, shared: true } }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const updated = { ...p, shared: true };
+          setProjects(prev => prev.map(x => x.id === projectId ? updated : x));
+          await S.set("proj:" + projectId, updated);
+          showToast("✓ 已分享此專案，其他登入用戶可查看");
+        } else {
+          showToast("分享失敗：" + (data.error || "未知錯誤"));
+        }
+      } else {
+        // Unshare: delete from R2 shared
+        await fetch(`/api/r2?action=delete-shared&projectId=${projectId}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        const updated = { ...p, shared: false };
+        setProjects(prev => prev.map(x => x.id === projectId ? updated : x));
+        await S.set("proj:" + projectId, updated);
+        showToast("已取消分享");
+      }
+    } catch (e) {
+      showToast("操作失敗：" + e.message);
+    }
+    setSharingId(null);
   };
 
   // ─── Storyboard panel management ───
@@ -1076,6 +1184,14 @@ export default function FilmPipelineManager() {
   };
 
   // ─── Render ───
+  if (!userLoaded) return (
+    <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ color: T.dim, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>載入中...</div>
+    </div>
+  );
+
+  if (!user) return <LoginScreen />;
+
   if (loading) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ color: T.dim, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>載入中...</div>
@@ -1100,29 +1216,39 @@ export default function FilmPipelineManager() {
         background: T.bg1, display: "flex", flexDirection: "column", height: "100vh",
       }}>
         {/* Logo */}
-        <div style={{ padding: "20px 18px 16px", borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${T.red}, ${T.amb})`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: "#fff",
-            }}>▶</div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.hi, fontFamily: "'Instrument Sans', sans-serif", letterSpacing: 1 }}>
-                NEXTFRAME FLOW
-              </div>
-              <div style={{ fontSize: 10, color: T.dim, letterSpacing: 2, fontFamily: "'Share Tech Mono', monospace" }}>
-                AI FILM PIPELINE
+        <div style={{ padding: "14px 18px 12px", borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg, ${T.red}, ${T.amb})`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#fff",
+              }}>▶</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.hi, fontFamily: "'Instrument Sans', sans-serif", letterSpacing: 1 }}>
+                  NEXTFRAME FLOW
+                </div>
+                <div style={{ fontSize: 9, color: T.dim, letterSpacing: 2, fontFamily: "'Share Tech Mono', monospace" }}>
+                  {readOnly ? "▶ 訪客模式" : "AI FILM PIPELINE"}
+                </div>
               </div>
             </div>
+            <UserButton afterSignOutUrl={window.location.href} />
           </div>
         </div>
 
-        {/* New Project */}
-        <div style={{ padding: "12px 14px" }}>
-          <Btn onClick={() => setShowNewDialog(true)} color={T.red} style={{ width: "100%", fontSize: 12 }}>
-            ＋ 新建專案
-          </Btn>
-        </div>
+        {/* New Project — owner only */}
+        {isOwner && (
+          <div style={{ padding: "12px 14px" }}>
+            <Btn onClick={() => setShowNewDialog(true)} color={T.red} style={{ width: "100%", fontSize: 12 }}>
+              ＋ 新建專案
+            </Btn>
+          </div>
+        )}
+        {readOnly && (
+          <div style={{ padding: "10px 18px 8px", fontSize: 11, color: T.dim, borderBottom: `1px solid ${T.border}` }}>
+            📋 共享的專案內容（唯讀）
+          </div>
+        )}
 
         {showNewDialog && (
           <div style={{ padding: "0 14px 12px", animation: "fadeIn 0.2s ease" }}>
@@ -1144,23 +1270,41 @@ export default function FilmPipelineManager() {
           {projects.map(p => {
             const isActive = p.id === activeId;
             const doneCount = Object.values(p.status || {}).filter(s => s === "done").length;
+            const isSharing = sharingId === p.id;
             return (
               <div key={p.id} onClick={() => { flushSave(); setActiveId(p.id); setActivePhase("script"); }}
                 style={{
-                  padding: "12px 18px", cursor: "pointer", transition: "all 0.15s",
+                  padding: "10px 14px 10px 18px", cursor: "pointer", transition: "all 0.15s",
                   background: isActive ? T.bg2 : "transparent",
                   borderLeft: isActive ? `2px solid ${T.red}` : "2px solid transparent",
                   borderBottom: `1px solid ${T.border}`,
                 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? T.hi : T.text }}>
-                    {p.name}
+                  <div style={{ fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? T.hi : T.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.shared ? <span title="已共享" style={{ color: T.grn, marginRight: 4 }}>●</span> : null}{p.name}
                   </div>
-                  <div style={{
-                    fontSize: 9, color: T.dim, fontFamily: "'Share Tech Mono', monospace",
-                    background: T.bg, padding: "2px 6px", borderRadius: 3,
-                  }}>
-                    {doneCount}/4
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, marginLeft: 6 }}>
+                    {isOwner && (
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleShare(p.id); }}
+                        disabled={isSharing}
+                        title={p.shared ? "取消分享" : "分享給登入用戶"}
+                        style={{
+                          padding: "2px 6px", fontSize: 9, fontWeight: 600, borderRadius: 4, cursor: "pointer",
+                          border: `1px solid ${p.shared ? T.grn + "66" : T.muted}`,
+                          background: p.shared ? T.grnG : "transparent",
+                          color: p.shared ? T.grn : T.dim,
+                          fontFamily: "inherit", opacity: isSharing ? 0.5 : 1,
+                        }}>
+                        {isSharing ? "..." : p.shared ? "● 共享中" : "📤"}
+                      </button>
+                    )}
+                    <div style={{
+                      fontSize: 9, color: T.dim, fontFamily: "'Share Tech Mono', monospace",
+                      background: T.bg, padding: "2px 6px", borderRadius: 3,
+                    }}>
+                      {doneCount}/4
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 3, marginTop: 6 }}>
@@ -1182,22 +1326,24 @@ export default function FilmPipelineManager() {
 
         {/* Export / Import + Sync */}
         <div style={{ borderTop: `1px solid ${T.border}`, padding: "10px 14px" }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            <button onClick={exportAllProjects} style={{
-              flex: 1, padding: "6px 0", background: T.bg2, border: `1px solid ${T.border}`,
-              borderRadius: 6, color: T.text, fontSize: 10, cursor: "pointer", fontFamily: "inherit",
-            }}>⬇ 匯出全部</button>
-            <input ref={importFileRef} type="file" accept=".json" style={{ display: "none" }}
-              onChange={e => { if (e.target.files[0]) importProjects(e.target.files[0]); e.target.value = ""; }}
-            />
-            <button onClick={() => importFileRef.current?.click()} style={{
-              flex: 1, padding: "6px 0", background: T.bg2, border: `1px solid ${T.border}`,
-              borderRadius: 6, color: T.text, fontSize: 10, cursor: "pointer", fontFamily: "inherit",
-            }}>⬆ 匯入專案</button>
-          </div>
+          {isOwner && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <button onClick={exportAllProjects} style={{
+                flex: 1, padding: "6px 0", background: T.bg2, border: `1px solid ${T.border}`,
+                borderRadius: 6, color: T.text, fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+              }}>⬇ 匯出全部</button>
+              <input ref={importFileRef} type="file" accept=".json" style={{ display: "none" }}
+                onChange={e => { if (e.target.files[0]) importProjects(e.target.files[0]); e.target.value = ""; }}
+              />
+              <button onClick={() => importFileRef.current?.click()} style={{
+                flex: 1, padding: "6px 0", background: T.bg2, border: `1px solid ${T.border}`,
+                borderRadius: 6, color: T.text, fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+              }}>⬆ 匯入專案</button>
+            </div>
+          )}
           <div style={{ fontSize: 10, color: T.dim, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: saving ? T.amb : T.grn, display: "inline-block" }} />
-            {saving ? "同步中..." : "已同步"}
+            {saving ? "同步中..." : readOnly ? `以 ${user?.firstName || user?.emailAddresses?.[0]?.emailAddress || "訪客"} 登入` : "已同步"}
           </div>
         </div>
       </div>
@@ -1224,12 +1370,19 @@ export default function FilmPipelineManager() {
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: T.hi }}>{proj.name}</h2>
                 <Badge color={T.dim}>{new Date(proj.createdAt).toLocaleDateString("zh-TW")}</Badge>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn small ghost color={T.dim} onClick={() => {
-                  const name = prompt("重新命名專案", proj.name);
-                  if (name?.trim()) { updateProj("name", name.trim()); }
-                }}>重新命名</Btn>
-                <Btn small ghost color={T.red} onClick={() => deleteProject(proj.id)}>刪除</Btn>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {readOnly && (
+                  <span style={{ fontSize: 10, color: T.grn, background: T.grnG, padding: "3px 10px", borderRadius: 5, fontWeight: 600 }}>
+                    👁 唯讀
+                  </span>
+                )}
+                {isOwner && <>
+                  <Btn small ghost color={T.dim} onClick={() => {
+                    const name = prompt("重新命名專案", proj.name);
+                    if (name?.trim()) { updateProj("name", name.trim()); }
+                  }}>重新命名</Btn>
+                  <Btn small ghost color={T.red} onClick={() => deleteProject(proj.id)}>刪除</Btn>
+                </>}
               </div>
             </div>
 
