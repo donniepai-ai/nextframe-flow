@@ -1,18 +1,21 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { createClerkClient } from "@clerk/backend";
+import { verifyToken } from "@clerk/backend";
 
-const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 const OWNER_USER_ID = process.env.OWNER_USER_ID;
 
 async function verifyOwner(req) {
-  if (!OWNER_USER_ID) return false; // no owner set = anyone can write (dev mode)
+  if (!OWNER_USER_ID) return true; // dev mode: no owner set
   const authHeader = req.headers["authorization"];
   if (!authHeader?.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
   try {
-    const payload = await clerk.verifyToken(token);
+    const payload = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
+    console.log("verifyOwner payload.sub:", payload.sub, "expected:", OWNER_USER_ID);
     return payload.sub === OWNER_USER_ID;
-  } catch {
+  } catch (e) {
+    console.error("verifyToken error:", e.message);
     return false;
   }
 }
