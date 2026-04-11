@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useUser, useAuth, SignIn, UserButton } from "@clerk/clerk-react";
+import { useUser, useAuth, SignIn, UserButton, Show, SignInButton } from "@clerk/react";
 
 const R2_WORKER_URL = "https://nextframe-flow-r2.donniepai.workers.dev";
 
@@ -319,31 +319,49 @@ function LoginScreen() {
       fontFamily: "'Noto Sans TC', sans-serif",
     }}>
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&family=Instrument+Sans:wght@400;700&display=swap" rel="stylesheet"/>
-      <div style={{ textAlign: "center", marginBottom: 32 }}>
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
         <div style={{
-          width: 52, height: 52, borderRadius: 14,
+          width: 56, height: 56, borderRadius: 14,
           background: "linear-gradient(135deg, #d9453a, #c8850a)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 24, color: "#fff", margin: "0 auto 16px",
+          fontSize: 26, color: "#fff", margin: "0 auto 20px",
+          boxShadow: "0 8px 24px rgba(217,69,58,0.25)",
         }}>▶</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a18", fontFamily: "'Instrument Sans', sans-serif", letterSpacing: 1 }}>
+        <div style={{ fontSize: 24, fontWeight: 700, color: "#1a1a18", fontFamily: "'Instrument Sans', sans-serif", letterSpacing: 1 }}>
           NEXTFRAME FLOW
         </div>
-        <div style={{ fontSize: 11, color: "#8a8a82", letterSpacing: 3, marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: "#8a8a82", letterSpacing: 3, marginTop: 6 }}>
           AI FILM PIPELINE
         </div>
-        <div style={{ fontSize: 13, color: "#8a8a82", marginTop: 12 }}>
-          登入後即可查看分享的專案內容
-        </div>
       </div>
-      <SignIn
-        appearance={{
-          elements: {
-            rootBox: { width: 380 },
-            card: { boxShadow: "0 8px 40px rgba(0,0,0,0.10)", borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)" },
-          },
-        }}
-      />
+
+      <div style={{
+        background: "#fff", borderRadius: 16, padding: "40px 48px",
+        boxShadow: "0 8px 48px rgba(0,0,0,0.08)", border: "1px solid rgba(0,0,0,0.06)",
+        textAlign: "center", minWidth: 320,
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a18", marginBottom: 8 }}>歡迎登入</div>
+        <div style={{ fontSize: 12, color: "#8a8a82", marginBottom: 28, lineHeight: 1.6 }}>
+          登入後即可查看分享的<br/>AI 電影專案管理內容
+        </div>
+        <Show when="signed-out">
+          <SignInButton mode="modal">
+            <button style={{
+              width: "100%", padding: "12px 24px", borderRadius: 10,
+              background: "linear-gradient(135deg, #d9453a, #c8850a)",
+              color: "#fff", fontSize: 14, fontWeight: 700, border: "none",
+              cursor: "pointer", letterSpacing: 0.5, fontFamily: "inherit",
+              boxShadow: "0 4px 16px rgba(217,69,58,0.3)",
+            }}>
+              登入 / 註冊
+            </button>
+          </SignInButton>
+        </Show>
+      </div>
+
+      <div style={{ fontSize: 11, color: "#c5c5bc", marginTop: 24 }}>
+        由 Clerk 提供安全驗證
+      </div>
     </div>
   );
 }
@@ -1232,7 +1250,7 @@ export default function FilmPipelineManager() {
                 </div>
               </div>
             </div>
-            <UserButton afterSignOutUrl={window.location.href} />
+            <UserButton />
           </div>
         </div>
 
