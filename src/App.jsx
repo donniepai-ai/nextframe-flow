@@ -1141,9 +1141,14 @@ export default function FilmPipelineManager() {
   const handlePanelImage = async (panelId, file) => {
     if (!file || !proj) return;
     showToast("上傳中...");
-    const url = await uploadToR2(proj.id, file);
-    updatePanel(panelId, "image", url);
-    showToast("✓ 圖片已上傳");
+    try {
+      const url = await uploadToR2(proj.id, file);
+      updatePanel(panelId, "image", url);
+      showToast("✓ 圖片已上傳");
+    } catch (e) {
+      console.error("Panel image upload failed:", e);
+      showToast("⚠ 上傳失敗：" + (e.message || "未知錯誤"));
+    }
   };
 
   // ─── Asset management ───
@@ -1176,9 +1181,14 @@ export default function FilmPipelineManager() {
   const handleAssetImage = async (type, assetId, file) => {
     if (!file || !proj) return;
     showToast("上傳中...");
-    const url = await uploadToR2(proj.id, file);
-    updateAsset(type, assetId, "image", url);
-    showToast("✓ 圖片已上傳");
+    try {
+      const url = await uploadToR2(proj.id, file);
+      updateAsset(type, assetId, "image", url);
+      showToast("✓ 圖片已上傳");
+    } catch (e) {
+      console.error("Asset image upload failed:", e);
+      showToast("⚠ 上傳失敗：" + (e.message || "未知錯誤"));
+    }
   };
 
   // ─── Prompt management ───
