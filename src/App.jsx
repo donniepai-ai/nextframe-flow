@@ -1140,6 +1140,10 @@ export default function FilmPipelineManager() {
 
   const handlePanelImage = async (panelId, file) => {
     if (!file || !proj) return;
+    if (file.size > 4 * 1024 * 1024) {
+      showToast("⚠ 圖片超過 4MB 上限，請壓縮後再上傳");
+      return;
+    }
     showToast("上傳中...");
     try {
       const url = await uploadToR2(proj.id, file);
@@ -1180,6 +1184,10 @@ export default function FilmPipelineManager() {
 
   const handleAssetImage = async (type, assetId, file) => {
     if (!file || !proj) return;
+    if (file.size > 4 * 1024 * 1024) {
+      showToast("⚠ 圖片超過 4MB 上限，請壓縮後再上傳");
+      return;
+    }
     showToast("上傳中...");
     try {
       const url = await uploadToR2(proj.id, file);
