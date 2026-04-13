@@ -331,7 +331,7 @@ function LoginScreen() {
           NEXTFRAME FLOW
         </div>
         <div style={{ fontSize: 11, color: "#8a8a82", letterSpacing: 3, marginTop: 6 }}>
-          AI FILM PIPELINE
+          AI 電影流程管理
         </div>
       </div>
 
@@ -845,7 +845,7 @@ export default function FilmPipelineManager() {
   <button onclick="window.print()" style="padding:8px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit">🖨 列印 / 存為 PDF</button>
 </div>
 <h1>${proj.name}</h1>
-<div class="subtitle">NextFrame Flow — 分鏡表 ｜ ${new Date().toLocaleDateString("zh-TW")} ｜ ${panels.length} 格 ｜ ${segKeys.length} Segments</div>`;
+<div class="subtitle">NextFrame Flow — 分鏡表 ｜ ${new Date().toLocaleDateString("zh-TW")} ｜ ${panels.length} 格 ｜ ${segKeys.length} 段落</div>`;
 
     segKeys.forEach(segNum => {
       const seg = segMap[segNum];
@@ -861,7 +861,7 @@ export default function FilmPipelineManager() {
       seg.panels.forEach((panel, idx) => {
         const imgHtml = panel.image
           ? `<img class="panel-img" src="${panel.image}" />`
-          : `<div class="panel-placeholder">No Image</div>`;
+          : `<div class="panel-placeholder">尚無圖片</div>`;
         const tags = [panel.shotSize, panel.angle, panel.movement, panel.duration]
           .filter(Boolean)
           .map(t => `<span class="tag">${t}</span>`)
@@ -1264,7 +1264,7 @@ export default function FilmPipelineManager() {
                   NEXTFRAME FLOW
                 </div>
                 <div style={{ fontSize: 9, color: T.dim, letterSpacing: 2, fontFamily: "'Share Tech Mono', monospace" }}>
-                  {readOnly ? "▶ 訪客模式" : "AI FILM PIPELINE"}
+                  {readOnly ? "▶ 訪客模式" : "AI 電影流程管理"}
                 </div>
               </div>
             </div>
@@ -1599,9 +1599,9 @@ export default function FilmPipelineManager() {
                 <div style={{ animation: "fadeIn 0.25s ease" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: 15, color: T.hi }}>🎬 分鏡表 & Shot List</h3>
+                      <h3 style={{ margin: 0, fontSize: 15, color: T.hi }}>🎬 分鏡表</h3>
                       <p style={{ margin: "3px 0 0", fontSize: 11, color: T.dim }}>
-                        按 Segment（每 15 秒）分組，每格可上傳分鏡圖
+                        按段落（每 15 秒）分組，每格可上傳分鏡圖
                       </p>
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1669,7 +1669,7 @@ export default function FilmPipelineManager() {
                         <option value="wip">進行中</option>
                         <option value="done">已完成</option>
                       </select>
-                      <Btn small color={T.pur} onClick={addSegment}>＋ 新增 Segment</Btn>
+                      <Btn small color={T.pur} onClick={addSegment}>＋ 新增段落</Btn>
                     </div>
                   </div>
 
@@ -1918,9 +1918,9 @@ export default function FilmPipelineManager() {
                   )}
 
                   {[
-                    { type: "characters", label: "🎭 角色 Characters", color: T.pur },
-                    { type: "scenes", label: "🌆 場景 Scenes", color: T.cyn },
-                    { type: "props", label: "⚙️ 道具 Props", color: T.amb },
+                    { type: "characters", label: "🎭 角色", color: T.pur },
+                    { type: "scenes", label: "🌆 場景", color: T.cyn },
+                    { type: "props", label: "⚙️ 道具", color: T.amb },
                   ].map(({ type, label, color }) => (
                     <div key={type} style={{ marginBottom: 24 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -2083,7 +2083,7 @@ export default function FilmPipelineManager() {
                             padding: "2px 8px", borderRadius: 4, fontFamily: "'Share Tech Mono', monospace",
                           }}>#{String(idx + 1).padStart(2, "0")}</span>
                           <input value={pm.title} onChange={e => updatePrompt(pm.id, "title", e.target.value)}
-                            placeholder="Segment 標題..."
+                            placeholder="段落標題..."
                             style={{
                               background: "transparent", border: "none", color: T.hi,
                               fontSize: 13, fontWeight: 600, outline: "none", fontFamily: "inherit", width: 200,
@@ -2133,10 +2133,10 @@ export default function FilmPipelineManager() {
                         {/* EN prompt */}
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 10, color: T.grn, fontWeight: 600, marginBottom: 4 }}>
-                            [EN] English Prompt
+                            [EN] 英文提示詞
                           </div>
                           <textarea value={pm.en} onChange={e => updatePrompt(pm.id, "en", e.target.value)}
-                            placeholder="English Seedance 2.0 prompt..." rows={5}
+                            placeholder="英文 Seedance 2.0 提示詞..." rows={5}
                             style={{
                               width: "100%", boxSizing: "border-box", background: T.bg,
                               border: `1px solid ${T.border}`, borderRadius: 6, padding: 10,
